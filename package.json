@@ -1,0 +1,18 @@
+{
+  "name": "esy-install",
+  "version": "0.0.1",
+  "author": "Andrey Popp <8mayday@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "bs-platform": "^1.8.2"
+  },
+  "dependencies": {
+    "bs-json": "^0.2.1",
+    "bs-node": "github:andreypopp/bs-node",
+    "npm-package-arg": "^5.1.2",
+    "npm-registry-client": "^8.4.0",
+    "ppx_let": "github:andreypopp/ppx_let",
+    "ppx_let_promise": "github:andreypopp/ppx_let_promise",
+    "semver": "^5.4.1"
+  }
+}

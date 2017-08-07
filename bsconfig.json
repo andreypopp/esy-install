@@ -1,0 +1,16 @@
+{
+  "name": "esy-install",
+  "ppx-flags": [
+    "ppx_let/ppx"
+  ],
+  "bs-dependencies": [
+    "bs-node",
+    "bs-json",
+    "ppx_let_promise"
+  ],
+  "sources": [
+    {
+      "dir": "src"
+    }
+  ]
+}
