@@ -19,14 +19,13 @@ let resolve (req : NpmTypes.Request.t) =
   let module Let_syntax = Promise.Let_syntax in
 
   let resolve_registry name =
-    let module Let_syntax = Promise.Let_syntax in
     let client = Npm.RegistryClient.create () in
     let%bind packument = Npm.RegistryClient.get_packument ~fullMetadata:true client name in
     match packument with
     | None ->
       Promise.return_none
-    | Some packument -> 
-      let versions = 
+    | Some packument ->
+      let versions =
         List.fold_left
           (fun results manifest -> (manifest.NpmTypes.Manifest.version, manifest)::results)
           []
@@ -34,9 +33,27 @@ let resolve (req : NpmTypes.Request.t) =
       in
       Promise.return_some (name, versions)
 
-  and resolve_git name_opt info =
-    Js.log info;
-    Promise.return_none
+  and resolve_git _name info =
+    match info with
+    | NpmTypes.Request.GitHub { github_username; github_reponame; github_committish } ->
+      let url = Printf.sprintf
+          "https://api.github.com/repos/%s/%s/contents/package.json?ref=%s"
+          github_username
+          github_reponame
+          github_committish
+      in
+      let%bind resp = Fetch.fetch url in
+      let%bind json = Fetch.Response.json resp in
+      let manifest =
+        json
+        |> Json.Decode.field "content" Json.Decode.string
+        |> Base64.decode
+        |> Js.Json.parseExn
+        |> Npm.Decode.manifest
+      in
+      Promise.return_some (manifest.name, [(manifest.version, manifest)])
+    | NpmTypes.Request.GitRepo _ ->
+      Promise.return_none
 
   in
 
@@ -115,8 +132,11 @@ let () =
   let main =
     let module Let_syntax = Promise.Let_syntax in
     let req = Npm.PackageArg.of_string_exn "ocaml@esy-ocaml/ocaml" in
-    let%bind (res : Universe.t) = resolve_universe req in
+    let req2 = Npm.PackageArg.of_string_exn "lodash@15.0.0" in
+    let%bind (res : Universe.t) = resolve_universe req
+    and (res2 : Universe.t) = resolve_universe req2 in
     Js.log res;
+    Js.log res2;
     Js.Promise.resolve ()
   in
 

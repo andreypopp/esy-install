@@ -7,8 +7,10 @@
     "bs-platform": "^1.8.2"
   },
   "dependencies": {
+    "bs-fetch": "^0.1.1",
     "bs-json": "^0.2.1",
     "bs-node": "github:andreypopp/bs-node",
+    "node-fetch": "^1.7.1",
     "npm-package-arg": "^5.1.2",
     "npm-registry-client": "^8.4.0",
     "ppx_let": "github:andreypopp/ppx_let",

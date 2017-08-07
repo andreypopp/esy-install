@@ -6,6 +6,7 @@
   "bs-dependencies": [
     "bs-node",
     "bs-json",
+    "bs-fetch",
     "ppx_let_promise"
   ],
   "sources": [
