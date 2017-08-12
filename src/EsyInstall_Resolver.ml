@@ -10,7 +10,7 @@ module Universe = struct
   open NpmTypes
 
   (** A mapping from a package name to a list of versions with manifests *)
-  type t = (string * Manifest.t) list StringMap.t
+  type t = Manifest.t StringMap.t StringMap.t
 end
 
 exception ResolveError of string
@@ -43,7 +43,16 @@ let resolve (req : NpmTypes.Request.t) =
           github_committish
       in
       let%bind resp = Fetch.fetch url in
+      if Fetch.Response.status resp != 200 then begin
+        let reason = Fetch.Response.statusText resp in
+        let message = Printf.sprintf
+            "unable to resolve github:%s/%s: %s"
+            github_username github_reponame reason in
+        raise (ResolveError message);
+      end;
       let%bind json = Fetch.Response.json resp in
+      Js.log @@ Fetch.Response.status resp;
+      Js.log json;
       let manifest =
         json
         |> Json.Decode.field "content" Json.Decode.string
@@ -66,6 +75,7 @@ let resolve (req : NpmTypes.Request.t) =
 let resolve_universe (req : NpmTypes.Request.t) =
   let module Let_syntax = Promise.Let_syntax in
 
+  (** Promises with the currently resolving requests *)
   let resolving = ref StringMap.empty in
 
   let find_resolving key =
@@ -87,6 +97,7 @@ let resolve_universe (req : NpmTypes.Request.t) =
     | NpmTypes.Request.Git (_,_,NpmTypes.Request.GitRepo { git_url; _ }) ->
       git_url
   in
+
 
   let merge_results into from =
     StringMap.fold (
@@ -110,7 +121,6 @@ let resolve_universe (req : NpmTypes.Request.t) =
           let req = NpmPackageArg.to_string req in
           raise (ResolveError ("Unable to resolve: " ^ req))
         | Some (name, versions) ->
-          let result = StringMap.empty |> StringMap.add name versions in
           let%bind results =
             versions
             |> List.map (fun (_version, manifest) -> manifest.NpmTypes.Manifest.dependencies)
@@ -118,6 +128,7 @@ let resolve_universe (req : NpmTypes.Request.t) =
             |> List.map resolve_universe_impl
             |> Promise.all
           in
+          let result = StringMap.empty |> StringMap.add name versions in
           let result = List.fold_left merge_results result results in
           Promise.return result
       in
@@ -127,17 +138,32 @@ let resolve_universe (req : NpmTypes.Request.t) =
 
   resolve_universe_impl req
 
+let universe_to_cudf_universe (univ : Universe.t) =
+  let cudf_univ = Cudf.empty_universe () in
+  StringMap.iter
+    (fun _name versions ->
+       StringMap.iter
+         (fun _version pkg ->
+            let cudf_pkg = NpmTypes.Manifest.({
+                Cudf.
+                default_package with
+                package = pkg.name;
+                version = 1;
+                installed = false;
+              }) in
+            Cudf.add_package cudf_univ cudf_pkg
+         ) versions) univ;
+  cudf_univ
+
 let () =
 
   let main =
     let module Let_syntax = Promise.Let_syntax in
-    let req = Npm.PackageArg.of_string_exn "ocaml@esy-ocaml/ocaml" in
-    let req2 = Npm.PackageArg.of_string_exn "lodash@15.0.0" in
-    let%bind (res : Universe.t) = resolve_universe req
-    and (res2 : Universe.t) = resolve_universe req2 in
-    Js.log res;
-    Js.log res2;
-    Js.Promise.resolve ()
+    let req = Npm.PackageArg.of_string_exn "express" in
+    let%bind univ = resolve_universe req in
+    let cudf_univ = universe_to_cudf_universe univ in
+    Cudf_printer.pp_universe stdout cudf_univ;
+    Promise.return ()
   in
 
   N.Main.run main

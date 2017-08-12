@@ -8,6 +8,8 @@ S /Users/andreypopp/Workspace/esy-install/node_modules/bs-node/lib/ocaml
 B /Users/andreypopp/Workspace/esy-install/node_modules/bs-node/lib/ocaml
 S /Users/andreypopp/Workspace/esy-install/node_modules/bs-json/lib/ocaml
 B /Users/andreypopp/Workspace/esy-install/node_modules/bs-json/lib/ocaml
+S /Users/andreypopp/Workspace/esy-install/node_modules/bs-cudf/lib/ocaml
+B /Users/andreypopp/Workspace/esy-install/node_modules/bs-cudf/lib/ocaml
 S /Users/andreypopp/Workspace/esy-install/node_modules/bs-fetch/lib/ocaml
 B /Users/andreypopp/Workspace/esy-install/node_modules/bs-fetch/lib/ocaml
 S /Users/andreypopp/Workspace/esy-install/node_modules/ppx_let_promise/lib/ocaml
