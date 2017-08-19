@@ -33,7 +33,7 @@ external parse_range_internal :
 
 let parse_range range =
   let parse_relop relop =
-    let open NpmVersionConstraint in
+    let open NpmVersionConstraint.Relation in
     let version = relop##semver in
     match relop##operator with
     | "<" -> [LT version]

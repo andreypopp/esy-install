@@ -136,12 +136,13 @@ module CudfEncoding = struct
       installed = false;
       pkg_extra = [("npm-version", `String (NpmVersion.to_string manifest.version))]
     } in
+    let versions = VersionMap.update_for_package
+        name context.versions
+        ((versions_map, versions_set), rev_versions)
+    in
     {
       packages = (cudf_package, manifest)::context.packages;
-      versions = VersionMap.update_for_package
-          name
-          context.versions
-          ((versions_map, versions_set), rev_versions);
+      versions;
     }
 
   let encode_depends context (pkg, manifest) =
@@ -152,51 +153,64 @@ module CudfEncoding = struct
         let ((map, _), _) = VersionMap.for_package name context.versions in
         let version = VersionMap.Map.find npm_version map in
         [[name, Some (`Eq, version)]]
-      | Request.Registry (_,_,NpmVersionConstraint.Tag _) -> []
+      | Request.Registry (_,_,NpmVersionConstraint.Tag _) ->
+        []
       | Request.Registry (_,name,NpmVersionConstraint.Range items) ->
+        let items = NpmVersionConstraint.to_cnf items in
         let ((map, set), _) = VersionMap.for_package name context.versions in
-        let encode_rel (rel : NpmVersionConstraint.rel) = match rel with
-          | NpmVersionConstraint.LT v ->
+        let min_version gset = 
+          if VersionMap.Set.is_empty gset then
+            None
+          else
+            let v = VersionMap.Set.min_elt gset in
+            Some (VersionMap.Map.find v map)
+        in
+        let max_version gset =
+          if VersionMap.Set.is_empty gset then
+            None
+          else
+            let v = VersionMap.Set.max_elt gset in
+            Some (VersionMap.Map.find v map)
+        in
+        let encode_rel (rel : NpmVersionConstraint.Relation.t) =
+          match rel with
+          | NpmVersionConstraint.Relation.LT v ->
+            let (_, exists, gset) = VersionMap.Set.split v set in
+            if not exists then (
+              let v = min_version gset in
+              (name, Option.map v (fun v -> (`Lt, v)))
+            ) else
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Lt, v))
+          | NpmVersionConstraint.Relation.LTE v ->
             let (_, exists, gset) = VersionMap.Set.split v set in
             if not exists then
-              let v = VersionMap.Set.min_elt gset in
-              let v = VersionMap.Map.find v map in
-              (name, Some (`Lt, v))
-            else
-              let v = VersionMap.Map.find v map in
-              (name, Some (`Lt, v))
-          | NpmVersionConstraint.LTE v ->
-            let (_, exists, gset) = VersionMap.Set.split v set in
-            if not exists then
-              let v = VersionMap.Set.min_elt gset in
-              let v = VersionMap.Map.find v map in
-              (name, Some (`Lt, v))
+              let v = min_version gset in
+              (name, Option.map v (fun v -> (`Lt, v)))
             else
               let v = VersionMap.Map.find v map in
               (name, Some (`Leq, v))
-          | NpmVersionConstraint.GT v ->
+          | NpmVersionConstraint.Relation.GT v ->
             let (lset, exists, _) = VersionMap.Set.split v set in
             if not exists then
-              let v = VersionMap.Set.max_elt lset in
-              let v = VersionMap.Map.find v map in
-              (name, Some (`Gt, v))
+              let v = max_version lset in
+              (name, Option.map v (fun v -> (`Gt, v)))
             else
               let v = VersionMap.Map.find v map in
               (name, Some (`Gt, v))
-          | NpmVersionConstraint.GTE v ->
+          | NpmVersionConstraint.Relation.GTE v ->
             let (lset, exists, _) = VersionMap.Set.split v set in
             if not exists then
-              let v = VersionMap.Set.max_elt lset in
-              let v = VersionMap.Map.find v map in
-              (name, Some (`Gt, v))
+              let v = max_version lset in
+              (name, Option.map v (fun v -> (`Gt, v)))
             else
               let v = VersionMap.Map.find v map in
               (name, Some (`Geq, v))
-          | NpmVersionConstraint.EQ v ->
+          | NpmVersionConstraint.Relation.EQ v ->
             let (_, exists, _) = VersionMap.Set.split v set in
             let version = if exists then VersionMap.Map.find v map else 10000 in
             (name, Some (`Eq, version))
-          | NpmVersionConstraint.NEQ v ->
+          | NpmVersionConstraint.Relation.NEQ v ->
             let (_, exists, _) = VersionMap.Set.split v set in
             let version = if exists then VersionMap.Map.find v map else 10000 in
             (name, Some (`Neq, version))
