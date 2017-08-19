@@ -1,4 +1,9 @@
+LoudRejection.install ()
+
+module P = PromiseSupport
+module StringSet = Set.Make(String)
 module StringMap = Map.Make(String)
+module IntMap = Map.Make(struct type t = int let compare = compare end)
 
 module RequestMap = Map.Make(
   struct
@@ -9,161 +14,269 @@ module RequestMap = Map.Make(
 module Universe = struct
   open NpmTypes
 
+  let empty = StringMap.empty
+
+  let lookup_package pkg univ =
+    let res = try
+        Some (StringMap.find pkg univ)
+      with Not_found ->
+        None
+    in Option.or_default StringMap.empty res
+
   (** A mapping from a package name to a list of versions with manifests *)
   type t = Manifest.t StringMap.t StringMap.t
 end
 
-exception ResolveError of string
+let build_universe req =
+  let module Let_syntax = P.Let_syntax in
 
-let resolve (req : NpmTypes.Request.t) =
-  let module Let_syntax = Promise.Let_syntax in
+  let resolving = Js.Dict.empty () in
+  let univ = ref Universe.empty in
 
-  let resolve_registry name =
-    let client = Npm.RegistryClient.create () in
-    let%bind packument = Npm.RegistryClient.get_packument ~fullMetadata:true client name in
+  let resolving_key req =
+    let open NpmTypes.Request in
+    match req with
+    | Registry (_,name,_) -> name
+    | Local (_,_,Directory path) | Local (_,_,File path) | Remote (_,_,path) ->
+      path
+    | Git (_,_,GitHub { github_username; github_reponame; github_committish }) ->
+      github_username ^ "/" ^ github_reponame ^ "#" ^ github_committish
+    | Git (_,_,GitRepo { git_url; git_committish }) ->
+      git_url ^ "#" ^ git_committish
+  in
+
+  let rec resolve_task req =
+    let%bind packument = Pacote.packument (NpmPackageArg.to_string req) in
     match packument with
     | None ->
-      Promise.return_none
-    | Some packument ->
-      let versions =
-        List.fold_left
-          (fun results manifest -> (manifest.NpmTypes.Manifest.version, manifest)::results)
-          []
-          packument.NpmTypes.Packument.versions
+      Js.log "OOPS";
+      Js.log (NpmPackageArg.to_string req);
+      P.resolve ()
+    | Some { name; versions } ->
+      let pkg_univ = ref (Universe.lookup_package name !univ) in
+      let tasks = List.map
+          (fun ({ NpmTypes.Manifest. dependencies } as manifest) ->
+             let version = NpmVersion.to_string manifest.version in
+             pkg_univ := StringMap.add version manifest !pkg_univ;
+             List.map resolve dependencies)
+          versions
       in
-      Promise.return_some (name, versions)
+      univ := StringMap.add name !pkg_univ !univ;
+      let tasks = List.flatten tasks in
+      let tasks = Array.of_list tasks in
+      let%bind _ = Js.Promise.all tasks in
+      P.resolve ()
 
-  and resolve_git _name info =
-    match info with
-    | NpmTypes.Request.GitHub { github_username; github_reponame; github_committish } ->
-      let url = Printf.sprintf
-          "https://api.github.com/repos/%s/%s/contents/package.json?ref=%s"
-          github_username
-          github_reponame
-          github_committish
-      in
-      let%bind resp = Fetch.fetch url in
-      if Fetch.Response.status resp != 200 then begin
-        let reason = Fetch.Response.statusText resp in
-        let message = Printf.sprintf
-            "unable to resolve github:%s/%s: %s"
-            github_username github_reponame reason in
-        raise (ResolveError message);
-      end;
-      let%bind json = Fetch.Response.json resp in
-      Js.log @@ Fetch.Response.status resp;
-      Js.log json;
-      let manifest =
-        json
-        |> Json.Decode.field "content" Json.Decode.string
-        |> Base64.decode
-        |> Js.Json.parseExn
-        |> Npm.Decode.manifest
-      in
-      Promise.return_some (manifest.name, [(manifest.version, manifest)])
-    | NpmTypes.Request.GitRepo _ ->
-      Promise.return_none
-
-  in
-
-  match req with
-  | NpmTypes.Request.Registry (_, name, _) -> resolve_registry name
-  | NpmTypes.Request.Local _ -> Promise.return None
-  | NpmTypes.Request.Remote _ -> Promise.return None
-  | NpmTypes.Request.Git (_,name,info) -> resolve_git name info
-
-let resolve_universe (req : NpmTypes.Request.t) =
-  let module Let_syntax = Promise.Let_syntax in
-
-  (** Promises with the currently resolving requests *)
-  let resolving = ref StringMap.empty in
-
-  let find_resolving key =
-    try Some (StringMap.find key !resolving)
-    with Not_found -> None
-  in
-
-  let resolving_key req = match req with
-    | NpmTypes.Request.Registry (_,name,_) ->
-      name
-    | NpmTypes.Request.Local (_,_,NpmTypes.Request.Directory path) ->
-      path
-    | NpmTypes.Request.Local (_,_,NpmTypes.Request.File path) ->
-      path
-    | NpmTypes.Request.Remote (_,_,url) ->
-      url
-    | NpmTypes.Request.Git (_,_,NpmTypes.Request.GitHub { github_username; github_reponame; _ }) ->
-      (github_username ^ "/" ^ github_reponame)
-    | NpmTypes.Request.Git (_,_,NpmTypes.Request.GitRepo { git_url; _ }) ->
-      git_url
-  in
-
-
-  let merge_results into from =
-    StringMap.fold (
-      fun k v into ->
-        let next_v = try StringMap.find k into with Not_found -> [] in
-        let next_v = v @ next_v in
-        StringMap.add k next_v into
-    ) from into
-  in
-
-  let rec resolve_universe_impl req =
+  and resolve req =
     let key = resolving_key req in
-    match find_resolving key with
+    match Js.Dict.get resolving key with
+    | None ->
+      let task = resolve_task req in
+      Js.Dict.set resolving key task;
+      task
     | Some task ->
       task
-    | None ->
-      let task =
-        let%bind resolved = resolve req in
-        match resolved with
-        | None ->
-          let req = NpmPackageArg.to_string req in
-          raise (ResolveError ("Unable to resolve: " ^ req))
-        | Some (name, versions) ->
-          let%bind results =
-            versions
-            |> List.map (fun (_version, manifest) -> manifest.NpmTypes.Manifest.dependencies)
-            |> List.flatten
-            |> List.map resolve_universe_impl
-            |> Promise.all
-          in
-          let result = StringMap.empty |> StringMap.add name versions in
-          let result = List.fold_left merge_results result results in
-          Promise.return result
-      in
-      resolving := StringMap.add key task !resolving;
-      task
   in
 
-  resolve_universe_impl req
+  let%bind () = resolve req in
+  P.resolve !univ
 
-let universe_to_cudf_universe (univ : Universe.t) =
-  let cudf_univ = Cudf.empty_universe () in
-  StringMap.iter
-    (fun _name versions ->
-       StringMap.iter
-         (fun _version pkg ->
-            let cudf_pkg = NpmTypes.Manifest.({
-                Cudf.
-                default_package with
-                package = pkg.name;
-                version = 1;
-                installed = false;
-              }) in
-            Cudf.add_package cudf_univ cudf_pkg
-         ) versions) univ;
-  cudf_univ
+module CudfEncoding = struct
+
+  module VersionMap = struct
+    module Set = Set.Make(NpmVersion)
+    module Map = Map.Make(NpmVersion)
+
+    type t = {
+      versions : (int Map.t * Set.t) StringMap.t;
+      rev_versions : NpmVersion.t IntMap.t StringMap.t;
+    }
+
+    let empty = {
+      versions = StringMap.empty;
+      rev_versions = StringMap.empty;
+    }
+
+    let for_package name v =
+      let lookup_default k m d =
+        try StringMap.find k m with Not_found -> d
+      in (
+        lookup_default name v.versions (Map.empty, Set.empty),
+        lookup_default name v.rev_versions IntMap.empty
+      )
+
+    let update_for_package name v (versions, rev_versions) = {
+      versions = StringMap.add name versions v.versions;
+      rev_versions = StringMap.add name rev_versions v.rev_versions;
+    }
+
+  end
+
+  type context = {
+    packages : (Cudf.package * NpmTypes.Manifest.t) list;
+    versions : VersionMap.t;
+  }
+
+  let encode_package (manifest : NpmTypes.Manifest.t) (context : context) =
+    let name = manifest.name in
+    let ((versions_map, versions_set), rev_versions) = VersionMap.for_package name context.versions in
+    let max_version =
+      try let max_key, _ = IntMap.max_binding rev_versions in max_key
+      with Not_found -> 0
+    in
+    let version = max_version + 1 in
+    let versions_map = VersionMap.Map.add manifest.version version versions_map in
+    let versions_set = VersionMap.Set.add manifest.version versions_set in
+    let rev_versions = IntMap.add version manifest.version rev_versions in
+    let cudf_package = {
+      Cudf.
+      default_package with
+      package = name;
+      version = version;
+      installed = false;
+      pkg_extra = [("npm-version", `String (NpmVersion.to_string manifest.version))]
+    } in
+    {
+      packages = (cudf_package, manifest)::context.packages;
+      versions = VersionMap.update_for_package
+          name
+          context.versions
+          ((versions_map, versions_set), rev_versions);
+    }
+
+  let encode_depends context (pkg, manifest) =
+    let encode_dep (dep : NpmTypes.Request.t) =
+      let open NpmTypes in
+      match dep with
+      | Request.Registry (_,name,NpmVersionConstraint.Exact npm_version) ->
+        let ((map, _), _) = VersionMap.for_package name context.versions in
+        let version = VersionMap.Map.find npm_version map in
+        [[name, Some (`Eq, version)]]
+      | Request.Registry (_,_,NpmVersionConstraint.Tag _) -> []
+      | Request.Registry (_,name,NpmVersionConstraint.Range items) ->
+        let ((map, set), _) = VersionMap.for_package name context.versions in
+        let encode_rel (rel : NpmVersionConstraint.rel) = match rel with
+          | NpmVersionConstraint.LT v ->
+            let (_, exists, gset) = VersionMap.Set.split v set in
+            if not exists then
+              let v = VersionMap.Set.min_elt gset in
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Lt, v))
+            else
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Lt, v))
+          | NpmVersionConstraint.LTE v ->
+            let (_, exists, gset) = VersionMap.Set.split v set in
+            if not exists then
+              let v = VersionMap.Set.min_elt gset in
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Lt, v))
+            else
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Leq, v))
+          | NpmVersionConstraint.GT v ->
+            let (lset, exists, _) = VersionMap.Set.split v set in
+            if not exists then
+              let v = VersionMap.Set.max_elt lset in
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Gt, v))
+            else
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Gt, v))
+          | NpmVersionConstraint.GTE v ->
+            let (lset, exists, _) = VersionMap.Set.split v set in
+            if not exists then
+              let v = VersionMap.Set.max_elt lset in
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Gt, v))
+            else
+              let v = VersionMap.Map.find v map in
+              (name, Some (`Geq, v))
+          | NpmVersionConstraint.EQ v ->
+            let (_, exists, _) = VersionMap.Set.split v set in
+            let version = if exists then VersionMap.Map.find v map else 10000 in
+            (name, Some (`Eq, version))
+          | NpmVersionConstraint.NEQ v ->
+            let (_, exists, _) = VersionMap.Set.split v set in
+            let version = if exists then VersionMap.Map.find v map else 10000 in
+            (name, Some (`Neq, version))
+        in
+        List.map (List.map encode_rel) items
+      | Request.Local _ -> []
+      | Request.Remote _ -> []
+      | Request.Git _ -> []
+    in
+
+    let depends =
+      manifest.NpmTypes.Manifest.dependencies
+      |> List.map encode_dep 
+      |> List.flatten
+      |> List.filter (fun item -> item <> [])
+    in
+
+    let npm_dependencies =
+      let open NpmTypes in
+      manifest.NpmTypes.Manifest.dependencies
+      |> List.map
+        (function
+          | Request.Registry (_,name,c) ->
+            name ^ "@{" ^ NpmVersionConstraint.to_string c ^ "}"
+          | Request.Local (raw,_,_) -> raw
+          | Request.Remote (raw,_,_) -> raw
+          | Request.Git (raw,_,_) -> raw)
+      |> String.concat ", "
+    in
+
+    let pkg = Cudf.(
+        {
+          pkg with
+          depends;
+          pkg_extra = ("npm-dependencies", `String npm_dependencies)::pkg.pkg_extra;
+        }
+      )
+    in (pkg, manifest)
+
+  let encode_universe (univ : Universe.t) =
+
+    let context = {
+      packages = [];
+      versions = VersionMap.empty;
+    } in
+
+    let context =
+      StringMap.fold
+        (fun _name versions context ->
+           StringMap.fold
+             (fun _version -> encode_package)
+             versions context)
+        univ context
+    in
+
+    let context =
+      {
+        context with
+        packages = List.map (encode_depends context) context.packages;
+      }
+    in
+
+    let univ = Cudf.empty_universe () in
+    List.iter (fun (pkg, _) -> Cudf.add_package univ pkg) context.packages;
+    univ
+
+end
 
 let () =
 
   let main =
-    let module Let_syntax = Promise.Let_syntax in
-    let req = Npm.PackageArg.of_string_exn "express" in
-    let%bind univ = resolve_universe req in
-    let cudf_univ = universe_to_cudf_universe univ in
+    let module Let_syntax = P.Let_syntax in
+    let req = NpmPackageArg.of_string_exn "./pkg" in
+    let%bind univ = build_universe req in
+    let cudf_univ = CudfEncoding.encode_universe univ in
     Cudf_printer.pp_universe stdout cudf_univ;
-    Promise.return ()
+    P.return ()
   in
 
-  N.Main.run main
+  let v = NpmVersion.of_string_exn "1.1.1" in
+  Js.log (NpmVersion.major v);
+
+  ignore (N.Main.run main)

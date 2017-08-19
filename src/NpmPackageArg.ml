@@ -14,10 +14,46 @@ and hosted_internal = <
   project : string;
 > Js.t
 
+and range_internal = <
+  set : <
+    operator : string;
+    semver : NpmVersion.t;
+  > Js.t Js.Array.t Js.Array.t;
+> Js.t
+
 external parse_internal :
   string ->
   spec_internal =
   "npm-package-arg" [@@bs.module]
+
+external parse_range_internal :
+  string ->
+  range_internal =
+  "Range" [@@bs.module "semver"]
+
+let parse_range range =
+  let parse_relop relop =
+    let open NpmVersionConstraint in
+    let version = relop##semver in
+    match relop##operator with
+    | "<" -> [LT version]
+    | "<=" -> [LTE version]
+    | ">" -> [GT version]
+    | ">=" -> [GTE version]
+    | "=" -> [EQ version]
+    | "" -> [EQ version]
+    | _ -> []
+  in
+  let range =
+    parse_range_internal range
+  in
+  range##set
+  |> Array.map (fun items ->
+      items
+      |> Array.map parse_relop
+      |> Array.to_list
+      |> List.flatten)
+  |> Array.to_list
 
 let of_string value =
   let module Let_syntax = Option.Let_syntax in
@@ -27,17 +63,19 @@ let of_string value =
 
   | "version" ->
     let%bind name = name in
-    let version = VersionConstraint.Exact obj##fetchSpec in
+    let version = NpmVersion.of_string_exn obj##fetchSpec in
+    let version = NpmVersionConstraint.Exact version in
     Some (Request.Registry (value, name,  version))
 
   | "range" ->
     let%bind name = name in
-    let version = VersionConstraint.Range obj##fetchSpec in
+    let range = parse_range obj##fetchSpec in
+    let version = NpmVersionConstraint.Range range in
     Some (Request.Registry (value, name,  version))
 
   | "tag" ->
     let%bind name = name in
-    let version = VersionConstraint.Tag obj##fetchSpec in
+    let version = NpmVersionConstraint.Tag obj##fetchSpec in
     Some (Request.Registry (value, name,  version))
 
   | "directory" ->

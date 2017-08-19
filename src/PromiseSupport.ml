@@ -8,6 +8,9 @@ let resolve = return
 let resolve_some = return_some
 let resolve_none = return_none
 
+let bind = Let_syntax.bind
+let map = Let_syntax.map
+
 let all promises =
   let module Let_syntax = Ppx_let_promise.Let_syntax in
   let promises = Array.of_list promises in

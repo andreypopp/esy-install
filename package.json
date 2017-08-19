@@ -11,9 +11,11 @@
     "bs-fetch": "^0.1.1",
     "bs-json": "^0.2.1",
     "bs-node": "github:andreypopp/bs-node",
+    "loud-rejection": "^1.6.0",
     "node-fetch": "^1.7.1",
     "npm-package-arg": "^5.1.2",
     "npm-registry-client": "^8.4.0",
+    "pacote": "github:andreypopp/pacote#andreypopp/packument-api",
     "ppx_let": "github:andreypopp/ppx_let",
     "ppx_let_promise": "github:andreypopp/ppx_let_promise",
     "semver": "^5.4.1"

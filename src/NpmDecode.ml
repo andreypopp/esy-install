@@ -12,6 +12,10 @@ let dependencies json =
   in
   map dict_to_req_list (dict string) json
 
+let version json =
+  let open Json.Decode in
+  json |> map NpmVersion.of_string_exn string
+
 let manifest json =
   let open Json.Decode in
   let optional_dependencies_field name = 
@@ -20,14 +24,14 @@ let manifest json =
   in {
     NpmTypes.Manifest.
     name = json |> field "name" string;
-    version = json |> field "version" string;
+    version = json |> field "version" version;
     dependencies = json |> optional_dependencies_field "dependencies";
     dev_dependencies = json |> optional_dependencies_field "devDependencies";
     build_dependencies = json |> optional_dependencies_field "buildDependencies";
     peer_dependencies = json |> optional_dependencies_field "peerDependencies";
   }
 
-let packument json =
+let packument_exn json =
   let open Json.Decode in
   let versions =
     let parse_versions versions =
@@ -41,3 +45,9 @@ let packument json =
     name = json |> field "name" string;
     versions = json |> field "versions" versions;
   }
+
+let handle_decode_error decoder json =
+  try Some (decoder json) with Json.Decode.DecodeError _ -> None
+
+let packument =
+  handle_decode_error packument_exn

@@ -32,6 +32,6 @@ let get_packument
   match%bind N.Error.handle_error (client##get url params) with
   | Js.Result.Ok data ->
     let (data : Js.Json.t) = Obj.magic data in
-    Js.Promise.resolve @@ Some (NpmDecode.packument data)
+    Js.Promise.resolve @@ Some (NpmDecode.packument_exn data)
   | Js.Result.Error _err ->
     Js.Promise.resolve None

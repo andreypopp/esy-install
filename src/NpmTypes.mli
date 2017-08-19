@@ -1,26 +1,14 @@
-module VersionConstraint : sig
-  type t = 
-    | Exact of string
-    | Tag of string
-    | Range of string
-end
-
 (** Represents a dependency request *)
 module Request : sig
   type t =
     (** Request to a package stored in a registry *)
-    | Registry of (string * string * VersionConstraint.t)
+    | Registry of (string * string * NpmVersionConstraint.t)
     (** Request to a package stored locally on a filesystem *)
     | Local of (string * string option * local_info)
     (** Request to a package stored remotely and addressed by an URL *)
     | Remote of (string * string option * string)
     (** Request to a package stored remotely in a git repo *)
     | Git of (string * string option * git_info)
-
-  and registry_info =
-    | Exact of string
-    | Tag of string
-    | Range of string
 
   and local_info =
     | Directory of string
@@ -46,7 +34,7 @@ end
 module Manifest : sig
   type t = {
     name : string;
-    version : string;
+    version : NpmVersion.t;
     (** Regular dependencies needed during package runtime. *)
     dependencies : Request.t list;
     (** Dependencies needed during package development (e.g. merlin, ocp-indent). *)

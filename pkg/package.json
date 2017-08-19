@@ -1,0 +1,10 @@
+{
+  "name": "pkg",
+  "version": "0.1.1",
+  "dependencies": {
+    "lodash": "*",
+    "url-pattern": "*",
+    "sspa": "*",
+    "tell": "*"
+  }
+}
