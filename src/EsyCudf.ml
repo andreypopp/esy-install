@@ -72,12 +72,11 @@ let encode_depends context (pkg, manifest) =
       let version = VersionMap.Map.find npm_version map in
       [[name, Some (`Eq, version)]]
     | NpmRequest.Registry (_,_,NpmRequest.Constraint.Tag _) ->
-      Js.log "XX";
       []
     | NpmRequest.Registry (_,name,NpmRequest.Constraint.Range items) ->
       let items = NpmVersionConstraint.to_cnf items in
       let ((map, set), _) = VersionMap.for_package name context.versions in
-      let min_version gset = 
+      let min_version gset =
         if VersionMap.Set.is_empty gset then
           None
         else
@@ -142,7 +141,7 @@ let encode_depends context (pkg, manifest) =
 
   let depends =
     manifest.NpmManifest.dependencies
-    |> List.map encode_dep 
+    |> List.map encode_dep
     |> List.flatten
     |> List.filter (fun item -> item <> [])
   in

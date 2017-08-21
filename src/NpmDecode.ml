@@ -18,7 +18,7 @@ let version json =
 
 let manifest json =
   let open Json.Decode in
-  let optional_dependencies_field name = 
+  let optional_dependencies_field name =
     let field = field name dependencies in
     map (Option.or_default []) (optional field)
   in {

@@ -27,7 +27,6 @@ let build_universe req =
     let%bind packument = Pacote.packument (NpmPackageArg.to_string req) in
     match packument with
     | None ->
-      Js.log (NpmPackageArg.to_string req);
       P.resolve ()
     | Some { name; versions } ->
       let pkg_univ = ref (EsyCore.Universe.lookup_package name !univ) in
@@ -68,8 +67,5 @@ let () =
     Cudf_printer.pp_universe stdout cudf_univ;
     P.return ()
   in
-
-  let v = NpmVersion.of_string_exn "1.1.1" in
-  Js.log (NpmVersion.major v);
 
   ignore (N.Main.run main)
