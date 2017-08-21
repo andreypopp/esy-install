@@ -18,28 +18,12 @@ module Relation = struct
 
 end
 
-type t = 
-  | Exact of NpmVersion.t
-  | Tag of string
-  | Range of formula
-
-and formula = Relation.t conjuction disjunction
+type formula = Relation.t conjuction disjunction
 
 and 'a conjuction = 'a list
 and 'a disjunction = 'a list
 
-let to_string (c : t) =
-  match c with
-  | Exact v -> NpmVersion.to_string v
-  | Tag v -> v
-  | Range disj ->
-    let wrap_cnj cnj = match disj with
-      | [] | _::[] -> cnj
-      | _ -> "{" ^ cnj ^ "}"
-    in
-    disj
-    |> List.map (fun cnj -> wrap_cnj (cnj |> List.map Relation.to_string |> String.concat ", "))
-    |> String.concat " || "
+type t = formula
 
 let to_cnf (dnf : formula) =
   let add_conj cnf conj =

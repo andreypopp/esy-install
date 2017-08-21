@@ -1,5 +1,3 @@
-open NpmTypes
-
 type client
 
 val create : unit -> client
@@ -12,4 +10,4 @@ val get_packument :
   ?fullMetadata : bool ->
   client ->
   string ->
-  Packument.t option Js.Promise.t
+  NpmPackument.t option Js.Promise.t

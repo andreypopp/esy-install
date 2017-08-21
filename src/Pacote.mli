@@ -1,2 +1,2 @@
-val packument : string -> NpmTypes.Packument.t option Js_promise.t
-val manifest : string -> NpmTypes.Manifest.t Js_promise.t
+val packument : string -> NpmPackument.t option Js_promise.t
+val manifest : string -> NpmManifest.t Js_promise.t

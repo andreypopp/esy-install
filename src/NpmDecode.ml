@@ -22,7 +22,7 @@ let manifest json =
     let field = field name dependencies in
     map (Option.or_default []) (optional field)
   in {
-    NpmTypes.Manifest.
+    NpmManifest.
     name = json |> field "name" string;
     version = json |> field "version" version;
     dependencies = json |> optional_dependencies_field "dependencies";
@@ -41,7 +41,7 @@ let packument_exn json =
     in
     map parse_versions (dict manifest)
   in {
-    NpmTypes.Packument.
+    NpmPackument.
     name = json |> field "name" string;
     versions = json |> field "versions" versions;
   }

@@ -32,11 +32,11 @@ module VersionMap = struct
 end
 
 type context = {
-  packages : (Cudf.package * NpmTypes.Manifest.t) list;
+  packages : (Cudf.package * NpmManifest.t) list;
   versions : VersionMap.t;
 }
 
-let encode_package (manifest : NpmTypes.Manifest.t) (context : context) =
+let encode_package (manifest : NpmManifest.t) (context : context) =
   let name = manifest.name in
   let ((versions_map, versions_set), rev_versions) = VersionMap.for_package name context.versions in
   let max_version =
@@ -65,17 +65,16 @@ let encode_package (manifest : NpmTypes.Manifest.t) (context : context) =
   }
 
 let encode_depends context (pkg, manifest) =
-  let encode_dep (dep : NpmTypes.Request.t) =
-    let open NpmTypes in
+  let encode_dep (dep : NpmRequest.t) =
     match dep with
-    | Request.Registry (_,name,NpmVersionConstraint.Exact npm_version) ->
+    | NpmRequest.Registry (_,name,NpmRequest.Constraint.Exact npm_version) ->
       let ((map, _), _) = VersionMap.for_package name context.versions in
       let version = VersionMap.Map.find npm_version map in
       [[name, Some (`Eq, version)]]
-    | Request.Registry (_,_,NpmVersionConstraint.Tag _) ->
+    | NpmRequest.Registry (_,_,NpmRequest.Constraint.Tag _) ->
       Js.log "XX";
       []
-    | Request.Registry (_,name,NpmVersionConstraint.Range items) ->
+    | NpmRequest.Registry (_,name,NpmRequest.Constraint.Range items) ->
       let items = NpmVersionConstraint.to_cnf items in
       let ((map, set), _) = VersionMap.for_package name context.versions in
       let min_version gset = 
@@ -136,28 +135,27 @@ let encode_depends context (pkg, manifest) =
           (name, Some (`Neq, version))
       in
       List.map (List.map encode_rel) items
-    | Request.Local _ -> []
-    | Request.Remote _ -> []
-    | Request.Git _ -> []
+    | NpmRequest.Local _ -> []
+    | NpmRequest.Remote _ -> []
+    | NpmRequest.Git _ -> []
   in
 
   let depends =
-    manifest.NpmTypes.Manifest.dependencies
+    manifest.NpmManifest.dependencies
     |> List.map encode_dep 
     |> List.flatten
     |> List.filter (fun item -> item <> [])
   in
 
   let npm_dependencies =
-    let open NpmTypes in
-    manifest.NpmTypes.Manifest.dependencies
+    manifest.NpmManifest.dependencies
     |> List.map
       (function
-        | Request.Registry (_,name,c) ->
-          name ^ "@{" ^ NpmVersionConstraint.to_string c ^ "}"
-        | Request.Local (raw,_,_) -> raw
-        | Request.Remote (raw,_,_) -> raw
-        | Request.Git (raw,_,_) -> raw)
+        | NpmRequest.Registry (_,name,c) ->
+          name ^ "@{" ^ NpmRequest.Constraint.to_string c ^ "}"
+        | NpmRequest.Local (raw,_,_) -> raw
+        | NpmRequest.Remote (raw,_,_) -> raw
+        | NpmRequest.Git (raw,_,_) -> raw)
     |> String.concat ", "
   in
 

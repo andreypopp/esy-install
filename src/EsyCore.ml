@@ -1,8 +1,6 @@
 module StringMap = Map.Make(String)
 
 module Universe = struct
-  open NpmTypes
-
   let empty = StringMap.empty
 
   let lookup_package pkg univ =
@@ -13,6 +11,6 @@ module Universe = struct
     in Option.or_default StringMap.empty res
 
   (** A mapping from a package name to a list of versions with manifests *)
-  type t = Manifest.t StringMap.t StringMap.t
+  type t = NpmManifest.t StringMap.t StringMap.t
 end
 

@@ -12,7 +12,7 @@ let build_universe req =
   let univ = ref EsyCore.Universe.empty in
 
   let resolving_key req =
-    let open NpmTypes.Request in
+    let open NpmRequest in
     match req with
     | Registry (_,name,_) -> name
     | Local (_,_,Directory path) | Local (_,_,File path) | Remote (_,_,path) ->
@@ -32,7 +32,7 @@ let build_universe req =
     | Some { name; versions } ->
       let pkg_univ = ref (EsyCore.Universe.lookup_package name !univ) in
       let tasks = List.map
-          (fun ({ NpmTypes.Manifest. dependencies } as manifest) ->
+          (fun ({ NpmManifest. dependencies } as manifest) ->
              let version = NpmVersion.to_string manifest.version in
              pkg_univ := StringMap.add version manifest !pkg_univ;
              List.map resolve dependencies)
