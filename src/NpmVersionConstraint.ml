@@ -48,7 +48,8 @@ let to_cnf (dnf : formula) =
     |> List.flatten
   in
   match dnf with 
-  | [] -> []
+  | [] ->
+    []
   | conj::dnf ->
     let cnf = List.map (fun r -> [r]) conj in
     List.fold_left add_conj cnf dnf
